@@ -1,0 +1,27 @@
+name: Desktop
+
+on:
+  workflow_dispatch:
+
+jobs:
+  desktop:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Start noVNC desktop
+        run: |
+          docker run -d \
+            --name desktop \
+            -p 6080:80 \
+            prbinu/novnc-desktop
+
+      - name: Install cloudflared
+        run: |
+          wget https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
+          sudo dpkg -i cloudflared-linux-amd64.deb
+
+      - name: Expose desktop
+        run: |
+          cloudflared tunnel --url http://localhost:6080
