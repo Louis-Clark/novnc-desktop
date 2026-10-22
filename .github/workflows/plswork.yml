@@ -1,4 +1,4 @@
-name: Build and Run noVNC Desktop with Cloudflare Tunnel
+name: Browser Desktop
 
 on:
   workflow_dispatch:
@@ -9,37 +9,35 @@ jobs:
     timeout-minutes: 25
 
     steps:
-      - name: Checkout source
+      - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: Build Docker image
+      - name: Build noVNC desktop image
         run: |
           docker build -t prbinu/novnc-desktop -f Dockerfile .
 
-      - name: Run noVNC desktop container
+      - name: Run noVNC desktop
         run: |
           docker run -d --rm \
-            --name novnc-desktop \
+            --name desktop \
             -p 8080:8080 \
             -e "TZ=America/Los_Angeles" \
             prbinu/novnc-desktop
 
-      - name: Wait for app to be reachable
+      - name: Verify desktop is listening
         run: |
           for i in $(seq 1 30); do
             if curl -fsS http://localhost:8080 >/dev/null; then
-              echo "noVNC is up"
+              echo "noVNC is responding"
               exit 0
             fi
-            echo "Waiting for noVNC to start... ($i/30)"
+            echo "Waiting for app to start... ($i/30)"
             sleep 10
           done
 
-          echo "noVNC failed to start"
-          echo "--- docker ps ---"
+          echo "Failed to reach noVNC"
           docker ps -a
-          echo "--- container logs ---"
-          docker logs novnc-desktop || true
+          docker logs desktop || true
           exit 1
 
       - name: Install cloudflared
@@ -47,13 +45,6 @@ jobs:
           wget -q https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
           sudo dpkg -i cloudflared-linux-amd64.deb
 
-      - name: Start Cloudflare Tunnel
-        env:
-          TUNNEL_TOKEN: ${{ secrets.CLOUDFLARED_TUNNEL_TOKEN }}
+      - name: Start Cloudflare quick tunnel
         run: |
-          echo "Starting Cloudflare tunnel..."
-          nohup cloudflared tunnel run --token "$TUNNEL_TOKEN" >/tmp/cloudflared.log 2>&1 &
-          sleep 15
-
-          echo "---- cloudflared log ----"
-          cat /tmp/cloudflared.log || true
+          cloudflared tunnel --url http://localhost:8080 --no-autoupdate
