@@ -1,4 +1,4 @@
-name: Browser Desktop
+name: Build and Run noVNC Desktop
 
 on:
   workflow_dispatch:
@@ -6,26 +6,38 @@ on:
 jobs:
   desktop:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     steps:
-      - name: Start noVNC desktop
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Build Docker image
         run: |
-          docker run -d \
-            --name desktop \
+          docker build -t prbinu/novnc-desktop -f Dockerfile .
+
+      - name: Run noVNC desktop container
+        run: |
+          docker run -d --rm \
+            --name novnc-desktop \
             -p 8080:8080 \
-            -e TZ=Europe/London \
+            -e "TZ=America/Los_Angeles" \
             prbinu/novnc-desktop
 
-      - name: Verify desktop
+      - name: Wait for noVNC to respond
         run: |
-          docker ps
-          curl http://localhost:8080
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:8080 >/dev/null; then
+              echo "noVNC is ready on http://localhost:8080"
+              exit 0
+            fi
+            echo "Waiting for noVNC to start... ($i/30)"
+            sleep 10
+          done
 
-      - name: Install cloudflared
-        run: |
-          wget https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
-          sudo dpkg -i cloudflared-linux-amd64.deb
-
-      - name: Start tunnel
-        run: |
-          cloudflared tunnel --url http://localhost:8080
+          echo "noVNC did not become ready in time."
+          echo "--- container logs ---"
+          docker logs novnc-desktop || true
+          echo "--- docker ps ---"
+          docker ps -a
+          exit 1
