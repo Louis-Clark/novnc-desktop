@@ -1,4 +1,4 @@
-name: Build and Run noVNC Desktop
+name: Build and Run noVNC Desktop with Cloudflare Tunnel
 
 on:
   workflow_dispatch:
@@ -6,7 +6,7 @@ on:
 jobs:
   desktop:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
 
     steps:
       - name: Checkout source
@@ -24,20 +24,36 @@ jobs:
             -e "TZ=America/Los_Angeles" \
             prbinu/novnc-desktop
 
-      - name: Wait for noVNC to respond
+      - name: Wait for app to be reachable
         run: |
           for i in $(seq 1 30); do
             if curl -fsS http://localhost:8080 >/dev/null; then
-              echo "noVNC is ready on http://localhost:8080"
+              echo "noVNC is up"
               exit 0
             fi
             echo "Waiting for noVNC to start... ($i/30)"
             sleep 10
           done
 
-          echo "noVNC did not become ready in time."
-          echo "--- container logs ---"
-          docker logs novnc-desktop || true
+          echo "noVNC failed to start"
           echo "--- docker ps ---"
           docker ps -a
+          echo "--- container logs ---"
+          docker logs novnc-desktop || true
           exit 1
+
+      - name: Install cloudflared
+        run: |
+          wget -q https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
+          sudo dpkg -i cloudflared-linux-amd64.deb
+
+      - name: Start Cloudflare Tunnel
+        env:
+          TUNNEL_TOKEN: ${{ secrets.CLOUDFLARED_TUNNEL_TOKEN }}
+        run: |
+          echo "Starting Cloudflare tunnel..."
+          nohup cloudflared tunnel run --token "$TUNNEL_TOKEN" >/tmp/cloudflared.log 2>&1 &
+          sleep 15
+
+          echo "---- cloudflared log ----"
+          cat /tmp/cloudflared.log || true
